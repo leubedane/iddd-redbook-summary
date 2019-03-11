@@ -99,3 +99,20 @@ We solved the transactional failures by modelling it away. You can simultaneous 
 
 **RULE: Model True Invariant in Consistency Boundaries**
 
+### invariants
+An invariant is a business rule that must always be consistent. Two kinds of consistency:
+* transactional consistency -> immediate and atomic
+* eventual consistency 
+
+An invariant can be:
+c = a + b
+
+We would model this as a consistent boundary that the rule is always true. The consistency of everything outside the boundary is irrelevant to the aggregate. So **Aggregate is synonymous with transactional consistency boundary**.
+A properly designed Aggregate is one that can be modified in any way required by the business with its invariants completely consistent within a single transaction. 
+
+**LEARNING: We cannot correctly reason on Aggregate design without applying transactional analysis.**
+
+Aggregates are chiefly about consistency boundaries and not driven by a desire to design object graphs.
+
+## **Rule: Design Small Aggregates**
+If we have to large Aggregates we will have problems with guarantee that all transactions would succeed and it limits performance. If we start with a large aggregate we will face a lot of problems later if the model grows. So don´t do this.
