@@ -116,3 +116,71 @@ Aggregates are chiefly about consistency boundaries and not driven by a desire t
 
 ## **Rule: Design Small Aggregates**
 If we have to large Aggregates we will have problems with guarantee that all transactions would succeed and it limits performance. If we start with a large aggregate we will face a lot of problems later if the model grows. So don´t do this.
+
+**How to find right size for Aggregates?**
+
+Normally you should design an aggregate with a root entity and some value objects. In the evans book there is an example where it makes sense to use multiple entities. A purchase order is assigned a maximum allowable total, and the sum of all line items must not surpass the total. This rule is tricky to enforce if it´s not in the same aggregate.
+
+## **Rule: Reference Other Aggregates by Identity**
+When designing Aggregates, we may desire a compositional structure that allows for traversal through deep object graphs, but that is not the motivation of the pattern. However, we must keep in mind that this does not place the referenced Aggregate inside the consistency boundary of the one referencing it. See the following picture. The Product is still outside the Backlog Aggregate.
+
+![aggregate3](img/aggregate3.PNG)
+
+The code looks like:
+```java
+public class BacklogItem extends ConcurrencySafeEntity  {
+     ...
+    private Product product;
+    ...
+}
+```
+With this implementation we have the following implications:
+* Both the referencing Aggregate (BacklogItem) and the referenced Aggregate (Product) must not be modified in the same transaction. Only one or the other may be modified in a single transaction.
+* If you are modifying multiple instances in a single transaction, it may be a strong indication that your consistency boundaries are wrong. If so, it is possibly a missed modeling opportunity; a concept of your Ubiquitous Language has not yet been discovered 
+* If you are attempting to previous point, and doing so influences a large-cluster Aggregate with all the previously stated caveats, it may be an indication that you need to use eventual consistency (see later in this chapter) instead of atomic consistency.
+
+We can´t modify another aggregate if we hold any reference. So **Making Aggregates Work Together through Identity References**
+
+![aggregate4](img/aggregate4.PNG)
+
+The new code looks like:
+```java
+public class BacklogItem extends ConcurrencySafeEntity  {
+    ...
+    private ProductId productId;
+    ...
+}
+```
+advantages:
+* aggregates are smaller
+* model can perform better 
+* need less memory
+
+If you use references, you also need navigation through the model. This should be done by a Repository or Domain Service to to lookup dependend objects.
+```java
+public class ProductBacklogItemService ... {
+    ...
+    @Transactional
+    public void assignTeamMemberToTask(String aTenantId,
+        String aBacklogItemId,
+        String aTaskId,
+        String aTeamMemberId) {
+
+        BacklogItem backlogItem =
+            backlogItemRepository.backlogItemOfId(
+                new TenantId(aTenantId),
+                new BacklogItemId(aBacklogItemId));
+
+        Team ofTeam =
+            teamRepository.teamOfId(
+                backlogItem.tenantId(),backlogItem.teamId());
+
+        backlogItem.assignTeamMemberToTask(
+                new TeamMemberId(aTeamMemberId),
+                ofTeam,
+                new TaskId(aTaskId));
+    }
+    ...
+}
+```
+Limiting a model to using only reference by identity could make it more difficult to serve clients that assemle and render User Interface views. If the query overhead causes performance it may be worth to considering CQRS.
