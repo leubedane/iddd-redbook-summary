@@ -343,3 +343,29 @@ public class Product extends ConcurrencySafeEntity  {
     }
 }
 ```
+The ```reorderFrom()``` method uses its internal ```BacklogItems``` to modify. You will need to weigh the competing forces between use of Law of Demeter and Tell, Don’t Ask. Certainly the Law of Demeter approach is much more restrictive, disallowing all navigation into Aggregate parts beyond the Root. 
+
+### Optimistic Concurrency 
+Next, we need to consider where to place the optimistic concurrency version attribute. ```Product``` would have a version attribute, and when any of its ```describeAs(), initiateDiscussion(), rename(), or reorderFrom() ``` command methods are executed, the version would always be incremented.
+```java
+public class Product extends ConcurrencySafeEntity  {
+    public void reorderFrom(BacklogItemId anId, int anOrdering) {
+        for (ProductBacklogItem pbi : this.backlogItems()) {
+            pbi.reorderFrom(anId, anOrdering);
+        }
+        this.version(this.version() + 1);
+    }
+}
+```
+One problem is that this code always dirties the Product, even when a reordering command actually has no effect. It’s possible that we don’t need to modify the Root’s version when any backlogItems are modified. Versioning all Entity parts doesn’t work in every case.  Sometimes the only way to protect an invariant is to modify the Root version. 
+
+### Avoid Dependency Injection
+Dependency injection of a Repository or Domain Service into an Aggregate should generally be viewed as harmful. The motivation may be to look up a dependent object instance from inside the Aggregate. As stated earlier under “Rule: Reference Other Aggregates by Identity,” preferably dependent objects are looked up before an Aggregate command method is invoked, and passed in to it.
+
+## Wrap-Up
+* You experienced the negative consequences of modeling large-cluster Aggregates.
+* You learned to model true invariants in consistency boundaries.
+* You considered the advantages of designing small Aggregates.
+* You now know why you should favor referencing other Aggregates by identity.
+* You discovered the importance of using eventual consistency outside the Aggregate boundary.
+* You saw various implementation techniques, including how you might use Tell, Don’t Ask and Law of Demeter.
