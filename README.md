@@ -11,7 +11,7 @@ Book Chapters
 - Chapter 7 Services
 - Chapter 8 Domain Events - <b>Patryk Zieliński</b>
 - Chapter 10 Aggregates - <b>Dane Leube</b> ✔️
-- Chapter 11 Factories
+- Chapter 11 Factories - <b>Dane Leube</b>
 - Chapter 12 Repositories
 - Chapter 13 Integrating Bounded Contexts - <b>James King</b>
 - Chapter 14 Application
