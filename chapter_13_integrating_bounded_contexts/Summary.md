@@ -50,9 +50,9 @@ Example: Notification -> Event
      "eventVersion": "123",
      "occurredOn": "some date/time format",
      "businessEventId": "456",
-     "businessId1": "456",
-     "businessId2": "789",
-     "businessId3": "135",
+     "backlogItemId": "456",
+     "sprintId": "789",
+     "tenantId": "135",
      "eventField1": "abc",
      "eventField2": "efg",
      "eventField3": "xyz"
@@ -116,8 +116,15 @@ type-safe methods for these fields: notificationId,typeName,version,occurredOn
 * TBD 
 
 ## Integration Using Messaging
-* TBD
+* allows any one system to acheive a higher degree of autonomy from systems it depends on.
+* as long as the middleware messaging system is running messages can still be produced and consumed even when not all 
+systems are running.
+* BoundedContext <--- Domain Events ----> BoundedContext
 
+![Agile Project Software](img/ddd-agile-project-bounded-context.jpg)
+
+* When in the <b>[Identity and Access Context]</b> a User is assigned a role, the Role class produces a Event so that 
+the <b>[Agile Project Management]</b> 
 
 
 
