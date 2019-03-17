@@ -123,10 +123,38 @@ systems are running.
 
 ![Agile Project Software](img/ddd-agile-project-bounded-context.jpg)
 
-* When in the <b>[Identity and Access Context]</b> a User is assigned a role, the Role class produces a Event so that 
-the <b>[Agile Project Management]</b> 
+* When in the <b>[Identity and Access Context]</b> a User is assigned a role, the Role class produces an Event so that 
+the <b>[Agile Project Management]</b> can establish TeamMember or ProductOwner entity.
+
+* One problem that could occur when using messaging is that Events can be delivered in the wrong order. In this case 
+you can use the occurredOn field to ensure Events are applied in the correct order.
+
+* You can use the XXXXChangeTracker with date field for each field in the Entity.
+
+* The tracker also serves to make the Entity idempotent. 
 
 
+```java
+public final class MemberChangeTracker implements Serializable {
+    private Date emailAddressChangedOn;
+    private Date enabledOn;
+    private Date nameChangedOn;
+    //...
+    public booelan canToggleEnabling(Date asDate) {
+        return this.enabledOn().before(asDate);
+    }
+    //...
+    public MemberChangedTracker enablingOn(Date asDate) {
+        return new MemberChangedTracker(
+                asDate,
+                this.nameChangedOn(),
+                this.emailAddressChangedOn()
+        );
+    }
+} 
+```
 
+* Bounded Contexts should aim to reduce responsibility for foreign information. This means that ideally entity
+information should be held and managed in one bounded-context.
 
-
+* Duplicating identity value objects XXXXId is okay as it's one of the primary ways of integrating bounded-contexts.
