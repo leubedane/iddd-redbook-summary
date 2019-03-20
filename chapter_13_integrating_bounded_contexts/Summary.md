@@ -113,7 +113,29 @@ type-safe methods for these fields: notificationId,typeName,version,occurredOn
 * Protocol Buffers: can be a better option when events change more frequently.
 
 ## Integration Using RESTful Resources
-* TBD 
+* Open Host Service
+    * Client ---> URIs ---> BC[restful resources]
+    * A set of open services: HTTP methods[GET,PUT,POST,DELETE] operate on resources
+
+* Autonomy
+    * Client can't carry out required integration if RESTFul-BC is unavailable.
+    * Can create the illusion of decoupling
+        * Timers: client will reach out to remote systems when timer elapses.
+        * Messaging: or when a message is received.
+        * If the remote system is unavailable timer threshold can be back off or message can be 
+        negatively acknowledged.
+        
+* <u><b>Shared Kernel</b> and <b>Conformist</b> context mapping relationships should be avoided in DDD as they run 
+counter the goals of DDD.</u>
+    * To avoid these relationships think of the the specific integration use-case and expose only what is needed. 
+
+* Hexagonal Architecture
+    * UserResource<HTTP Resource> --> AccessService<Application Service>
+    * Application Services are direct clients of the inner-hexagon i.e. the Domain!
+        * They are from the solution space not problem space.
+    * Domain Service are from the ubiquitous language and from the problem space.
+        * Is used by application-service and aggregates.
+
 
 ## Integration Using Messaging
 * allows any one system to acheive a higher degree of autonomy from systems it depends on.
