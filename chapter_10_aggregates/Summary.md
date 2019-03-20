@@ -249,7 +249,7 @@ What about the total number of tasks and estimates in memory for each reestimati
 
 ### Exploring Another Alternative Design
 The teams wants to try another design:
-![aggregate5](img/aggregate5.png)
+![aggregate5](img/aggregate5.PNG)
 
 The ```Task``` is separated from ```BacklogItem``` and each is an aggregate. We try to use eventual consistency between both aggregates. When a ```Task``` processes an ```estimateHoursRemaining()``` command, it publishes a Domain Event. 
 
