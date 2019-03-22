@@ -133,9 +133,22 @@ counter the goals of DDD.</u>
     * UserResource<HTTP Resource> --> AccessService<Application Service>
     * Application Services are direct clients of the inner-hexagon i.e. the Domain!
         * They are from the solution space not problem space.
-    * Domain Service are from the ubiquitous language and from the problem space.
+    * Domain Services are from the Domain ubiquitous language i.e. from the problem space.
         * Is used by application-service and aggregates.
-
+        
+## Implementing the REST Client Using an Anticorruption Layer
+* <client>BC-[ACL] -----> BC
+* protect a client BC domain from pollution caused by another server BC
+* convert foreign concepts to more effective local concepts
+* [BC: Identity and Access]: local concepts: User, Role
+* [BC:Collaboration]: local concepts: Collaborator
+* [BC:Collaboration][ACL] --------<-REST[user,role]--------> [BC: Identity and Access]
+* [ACL] classes: TranslatingCollaboratorService<CollaboratorService> -> UserInRoleAdapter -> CollaboratorTranslator
+    * CollaboratorService: a facade that hides away the complexity of getting a Collaborator from foreign BC
+        * The interface CollaboratorService is in the domain model
+        * But the implementation TranslatingCollaboratorService is the infrastructure as a technical concern
+    * UserInRoleAdapter: makes the remote call to get json
+    * CollaboratorTranslator: convert json to Collaborator class
 
 ## Integration Using Messaging
 * allows any one system to acheive a higher degree of autonomy from systems it depends on.
