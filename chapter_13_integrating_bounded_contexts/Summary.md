@@ -122,7 +122,7 @@ type-safe methods for these fields: notificationId,typeName,version,occurredOn
     * Can create the illusion of decoupling
         * Timers: client will reach out to remote systems when timer elapses.
         * Messaging: or when a message is received.
-        * If the remote system is unavailable timer threshold can be back off or message can be 
+        * If the remote system is unavailable timer threshold can be backed-off or message can be 
         negatively acknowledged.
         
 * <u><b>Shared Kernel</b> and <b>Conformist</b> context mapping relationships should be avoided in DDD as they run 
@@ -193,3 +193,21 @@ public final class MemberChangeTracker implements Serializable {
 information should be held and managed in one bounded-context.
 
 * Duplicating identity value objects XXXXId is okay as it's one of the primary ways of integrating bounded-contexts.
+
+
+### Long-Running Processes, and Avoiding Responsibility
+
+Use-Case:
+
+Agile-PM[BC]  -----> Collaboration[BC] 
+
+* Product is managed in Agile-PM[BC]
+    * Since discussions can be about Product or BacklogItem
+    * Agile-PM[BC] differentiates Discussion to ProductDiscussion and BacklogItemDiscussion 
+    * Both are Value Objects
+* Forum and Discussion are managed in Collaboration[BC]
+* Problems: - Discussion creation request. - Discussion creation. - Discussion association with Product
+* What happens if Collaboration[BC] isn't available?
+
+
+
