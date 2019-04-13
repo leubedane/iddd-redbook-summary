@@ -1,11 +1,14 @@
-# Chapter 11 Factories
+# Chapter 12 Repository
 
- The focus here is to provide examples of how you can use Factories in the domain model.
+A repository is a storage location. When you put things in you expect that it would be in the same state when you read it afterwards. At some point you want to remove it.
+
+For each type of object that needs global access, create an object that can provide the illusion of in-memory collection. Provide methods to add and remove objects. Provide methods that select objects based on some criteria and return fully instantiated objects or collections of objects whose attribute values meet the criteria. Every persistent Aggregate type will have a Repository.
 
 ## Chapter Learning content
-* Learn why the use of Factories can produce expressive models that adhere to the Ubiquitous Language (1).
-* See how SaaSOvation uses Factory Methods as Aggregate (10) behaviors.
-* Consider how to use Factory Methods to create Aggregate instances of other types.
-* Learn how Domain Services can be designed as Factories while interacting with other Bounded Contexts (2) and translating foreign objects to local types.
+* Learn two different kinds of Repositories
+* Implement Repositories for Hibernate, TopLink, Coherence, and MongoDB
+* Understand why you might need additional behavior on a Repository’s interface.
+* Become familiar with the challenges of designing Repositories for type hierarchies.
+* Differences between Repositories and Data Access Objects
 
 
