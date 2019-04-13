@@ -63,6 +63,48 @@ If you try to add the same object twice it still has one object. The same goes f
 * A Repository should work like a Set in the Collection-Oriented way
 * You don’t need to “re-save” modified objects already held by the Repository
 
-When does it work:
+Example: 
+```java
+public interface RepositoryUsage {
+
+    public void modifyCalender() {
+       CalendarId calendarId = new CalendarId(...);
+        Calendar calendar =  new Calendar(calendarId, "Project Calendar"...);
+        CalendarRepository calendarRepository = new CalendarRepository();
+        calendarRepository.add(calendar);
+        // later ...
+        Calendar calendarToRename =
+        calendarRepository.findCalendar(calendarId);
+        calendarToRename.rename("CollabOvation Project Calendar");
+        // even later still ...
+        Calendar calendarThatWasRenamed =
+        calendarRepository.findCalendar(calendarId);
+
+        assertEquals("CollabOvation Project Calendar",calendarThatWasRenamed.name());
+    }
+}
+```
+The entry was modified without asking the CalendarRepository to save changes to the Calendar instance. CalendarRepository doesn’t have a save() method because there is no need for one.
+
+**Collection-oriented Repository truly mimics a collection in that no parts of the persistence mechanisms are surfaced to the client by its public interface.**
+
+To do this the persistence mechanism must support the ability to implicitly track changes made to each persistent object that it manages.
+Two strategies:
+
+### Implicit Copy-on-Read
+The persistence mechanism implicitly copies each persistent object on read when it is reconstituted from the data store and compares its private copy to the client’s copy on commit. When a change on this object happens, the persistence compares the object and flushes the changes to the data store.
+
+### Implicit Copy-on-Write
+The persistence mechanism manages all loaded persistent objects through a proxy. When an object is loaded, a thin proxy is created. The client performs actions on the proxy object which reflects behavior onto real object. When the proxy first receives a method invocation, it makes a copy of the managed object. The proxy tracks changes made to the state of the managed object and marks it dirty. On the commit of the transcation the changes where flushed.
+
+### overall advantage
+Persistent object changes are tracked implicitly, requiring no explicit client knowledge or intervention to make changes known to the persistence mechanism.
+The bottom line here is that using a persistence mechanism like this, such as Hibernate, allows you to employ a traditional, collection-oriented Repository.
+
+### When not to use
+If your requirements demand a very high-performance domain with many, many objects in memory at any given time, this sort of mechanism is going to add gratuitous overhead, in both memory and execution. 
+
+
+## Hibernate Implementation
 
 
