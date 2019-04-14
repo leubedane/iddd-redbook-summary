@@ -106,5 +106,161 @@ If your requirements demand a very high-performance domain with many, many objec
 
 
 ## Hibernate Implementation
+You need an interface which represents the collection-oriented design. The implementation can use hibernate. The return value of the add() and remove() method has a void return value. If you return a boolean it is not said, that the operation suceeded. You should carefully use removeAll() method on the interface. If you need to remove items, you should also think about logical remove and not physical remove. 
+
+Another important part is the definition of finder methods like: 
+
+```java
+public interface CalendarEntryRepository  {
+
+    public CalendarEntry calendarEntryOfId(
+            Tenant aTenant,
+            CalendarEntryId aCalendarEntryId);
+
+    public Collection<CalendarEntry> calendarEntriesOfCalendar(
+            Tenant aTenant,
+            CalendarId aCalendarId);
+
+    public Collection<CalendarEntry> overlappingCalendarEntries(
+            Tenant aTenant,
+            CalendarId aCalendarId,
+            TimeSpan aTimeSpan);
+}
+```
+
+You could also provide a function to get the next identy:
+```java
+public interface CalendarEntryRepository  {
+    public CalendarEntryId nextIdentity();
+}
+```
+Any code which wants to create a new instance can call the nextIdenty method and assign its new unique id.
+
+Start with the implementation in hibernate. You should put the implementation in another package or module. You can also put all technical implementation classes in the infrastructure layer.
+```java
+public class HibernateCalendarEntryRepository
+        implements CalendarEntryRepository  {
+    ...
+    @Override
+    public void add(CalendarEntry aCalendarEntry) {
+        try {
+            this.session().saveOrUpdate(aCalendarEntry);
+        } catch (ConstraintViolationException e) {
+            throw new IllegalStateException(
+                    "CalendarEntry is not unique.", e);
+        }
+    }
+
+    @Override
+    public void addAll(
+            Collection<CalendarEntry> aCalendarEntryCollection) {
+        try {
+            for (CalendarEntry instance : aCalendarEntryCollection) {
+                this.session().saveOrUpdate(instance);
+            }
+        } catch (ConstraintViolationException e) {
+            throw new IllegalStateException(
+                "CalendarEntry is not unique.", e);
+        }
+    }
+
+    @Override
+    public void remove(CalendarEntry aCalendarEntry) {
+        this.session().delete(aCalendarEntry);
+    }
+
+    @Override
+    public void removeAll(
+            Collection<CalendarEntry> aCalendarEntryCollection) {
+        for (CalendarEntry instance : aCalendarEntryCollection) {
+            this.session().delete(instance);
+        }
+    }
+    ...
+}
+```
+The internal usage of saveOrUpdate() method illustrates the set like handling of the collection. To hide information about exceptions from the client the `ConstraintViolationException` is catched and converted to a more client-friendly IllegalStateException. You can also use domain specific exceptions. 
+
+A special thing is the one-to-one bidirectional relation in Identity and Access Context. 
+```java
+public class HibernateUserRepository implements UserRepository  {
+    ...
+    @Override
+    public void remove(User aUser) {
+        this.session().delete(aUser.person());
+        this.session().delete(aUser);
+    }
+
+    @Override
+    public void removeAll(Collection<User> aUserCollection) {
+        for (User instance : aUserCollection) {
+            this.session().delete(instance.person());
+            this.session().delete(instance);
+        }
+    }
+    ...
+}
+```
+Before you can delete the User, you must first delete the person. If you don´t delete the person object, it will be orphaned in its db table. This is a good reason to avoid bidirectional one-to-one mappings. You should use a constrained  unidirectional one-to-many mapping. Vernon is a strong opponent of Aggregate-managed persistence. His advice is to use Repository-only persistence, it should be a rule of thumb to avoid Aggregate-managed persistence.
+
+Finder implementation:
+```java
+public class HibernateCalendarEntryRepository
+        implements CalendarEntryRepository {
+    ...
+    @Override
+    public Collection<CalendarEntry> overlappingCalendarEntries(
+        Tenant aTenant, CalendarId aCalendarId, TimeSpan aTimeSpan) {
+        Query query =
+            this.session().createQuery(
+                "from CalendarEntry as _obj_ " +
+                "where _obj_.tenant = :tenant and " +
+                  "_obj_.calendarId = :calendarId and " +
+                  "((_obj_.repetition.timeSpan.begins between " +
+                      ":tsb and :tse) or " +
+                  " (_obj_.repetition.timeSpan.ends between " +
+                      ":tsb and :tse))");
+
+        query.setParameter("tenant", aTenant);
+        query.setParameter("calendarId", aCalendarId);
+        query.setParameter("tsb", aTimeSpan.begins(), Hibernate.DATE);
+        query.setParameter("tse", aTimeSpan.ends(), Hibernate.DATE);
+
+        return (Collection<CalendarEntry>) query.list();
+    }
+}
+```
+
+## Toplink Implementation
+TopLink has a Session and a Unit of Work. Example Usage:
+```java
+public class UnitOfWorkUsage {
+
+    public void usageExample(
+        Calendar calendar = session.readObject(...);
+        UnitOfWork unitOfWork = session.acquireUnitOfWork();
+        Calendar calendarToRename = unitOfWork.registerObject(calendar);
+        calendarToRename.rename("CollabOvation Project Calendar");
+        unitOfWork.commit();
+    }
+
+    public void add(Calendar aCalendar) {
+        this.unitOfWork().registerNewObject(aCalendar);
+    }
+
+    // to register change listener on object so you can
+    // persist it after modify it.
+    public Calendar editingCopy(Calendar aCalendar) {
+        return (Calendar) this.unitOfWork().registerObject(aCalendar);
+    }
+
+    // or
+
+    ublic void useEditingMode();
+}
+```
+The UnitOfWork provides a much more efficient use of memory and processing power. 
+You must explicitly inform the UnitOfWork that you intend to modify the object. There is no clone or editing copy created. With the register method the change tracker is activated so you can commit the changes. 
 
 
+## Collection-Oriented Repositories
