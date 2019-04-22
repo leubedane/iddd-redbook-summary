@@ -256,11 +256,233 @@ public class UnitOfWorkUsage {
 
     // or
 
-    ublic void useEditingMode();
+    public void useEditingMode();
 }
 ```
 The UnitOfWork provides a much more efficient use of memory and processing power. 
 You must explicitly inform the UnitOfWork that you intend to modify the object. There is no clone or editing copy created. With the register method the change tracker is activated so you can commit the changes. 
 
 
-## Collection-Oriented Repositories
+## Persistence-Oriented (save-based) Repositories
+When a collection-oriented repo does´t work:
+* persistence mechanism doesn´t implicitly or explicitly detect and track object changes
+
+This happens, when using an in-memory DataFabric or another NoSQL key-value data store. Every time you modify an object, you need the ```save()``` method. If you plan to use a NoSQL DB instead of a relational db you should also consider using this style. 
+
+### Take-away
+We must explicitly ```put()``` both new and changed objects into the store. It simplifies the writes and reads of aggregates, thats why they were called Aggregate Stores or Aggregate-Oriented Databases. The data is saved in a key-value map.
+
+```java
+public class SimpleWriteRead {
+
+    public void usageExample() {
+       cache.put(product.productId(), product);
+
+        // later ...
+        product = cache.get(productId);
+    }
+}
+```
+In this example the product is serialized with java standard serialization. You need to think about performance when serialize objects. It is not as simple as using a put in a Java Map.
+
+## Coherence Implementation
+Implementation example for a Coherence DB.
+Interface:
+```java
+public interface ProductRepository  {
+    public ProductId nextIdentity();
+    public Collection<Product> allProductsOfTenant(Tenant aTenant);
+    public Product productOfId(Tenant aTenant, ProductId aProductId);
+    public void remove(Product aProduct);
+    public void removeAll(Collection<Product> aProductCollection);
+    public void save(Product aProduct);
+    public void saveAll(Collection<Product> aProductCollection);
+}
+```
+The main difference is using ```save()``` and ```saveAll()``` instead of ```add()``` and ```addAll()```. In this style Aggregates need to be added when created and updated:
+
+```java
+public class CreateAndUpdate {
+
+    public void usageExample() {
+        Product product = new Product(...);
+
+        productRepository.save(product);
+
+        // later ...
+
+        Product product =
+        productRepository.productOfId(tenantId, productId);
+
+        product.reprioritizeFrom(backlogItemId, orderOfPriority);
+
+        productRepository.save(product);
+    }
+}
+```
+
+Repository implementation:
+
+
+```java
+public class CoherenceProductRepository implements ProductRepository {
+    private Map<Tenant,NamedCache> caches;
+
+    public CoherenceProductRepository() {
+        super();
+        this.caches = new HashMap<Tenant,NamedCache>();
+    }
+    ...
+    private synchronized NamedCache cache(TenantId aTenantId) {
+        NamedCache cache = this.caches.get(aTenantId);
+
+        if (cache == null) {
+            cache = CacheFactory.getCache(
+                    "agilepm.Product." + aTenantId.id(),
+                    Product.class.getClassLoader());
+
+            this.caches.put(aTenantId, cache);
+        }
+
+        return cache;
+    }
+    ...
+}
+```
+In the case of the Agile Project Management Context, the team has chosen to place Repository technical implementations in the Infrastructure Layer. There are various Coherence named cache strategies that could be designed. In this case the team has chosen to cache using the following namespace:
+1. First level by the Bounded Context short name: agilepm
+2. Second level by the Aggregate simple name: Product
+3. Third level by the unique identity of each tenant: TenantId
+
+Benefits:
+* model of each Bounded Context, Aggregate, and tenant that is managed by Coherence can be tuned and scaled separately. 
+* each tenant is completely segregated from all others.
+
+Further implementations:
+
+```java
+public class CoherenceProductRepository implements ProductRepository {
+    @Override
+    public void save(Product aProduct) {
+        this.cache(aProduct.tenantId())
+                .put(this.idOf(aProduct), aProduct);
+    }
+
+    @Override
+    public void saveAll(Collection<Product> aProductCollection) {
+        if (!aProductCollection.isEmpty()) {
+            TenantId tenantId = null;
+
+            Map<String,Product> productsMap =
+                new HashMap<String,Product>(aProductCollection.size());
+
+            for (Product product : aProductCollection) {
+                if (tenantId == null) {
+                    tenantId = product.tenantId();
+                }
+                productsMap.put(this.idOf(product), product);
+            }
+
+            this.cache(tenantId).putAll(productsMap);
+        }
+    }
+    ...
+    private String idOf(Product aProduct) {
+        return this.idOf(aProduct.productId());
+    }
+
+    private String idOf(ProductId aProductId) {
+        return aProductId.id();
+    }
+
+    @Override
+    public void remove(Product aProduct) {
+        this.cache(aProduct.tenant()).remove(this.idOf(aProduct));
+    }
+
+    @Override
+    public void removeAll(Collection<Product> aProductCollection) {
+        for (Product product : aProductCollection) {
+            this.remove(product);
+        }
+    }
+}
+```
+Note the two editions of ```idOf()```. Both methods return a String which is used as unique identity for the cache. To reduce network traffic the ```saveAll()``` does not call the ```save()``` method. It uses batch-processing. The ```removeAll()``` method uses ```remove()``` method because there is no method on HashMap which removes all elements, so you need to iterate.
+
+### Finder Methods
+```java
+public class CoherenceProductRepository
+        implements ProductRepository {
+    ...
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public Collection<Product> allProductsOfTenant(Tenant aTenant) {
+        Set<Map.Entry<String, Product>> entries = this.cache(aTenant).entrySet();
+
+        Collection<Product> products =
+            new HashSet<Product>(entries.size());
+
+        for (Map.Entry<String, Product> entry : entries) {
+            products.add(entry.getValue());
+        }
+
+        return products;
+    }
+
+    @Override
+    public Product productOfId(Tenant aTenant, ProductId aProductId) {
+       return (Product) this.cache(aTenant).get(this.idOf(aProductId));
+    }
+    ...
+}
+```
+Through a good key design, the ```allProductsOfTenant()``` method is really simple. 
+
+## MongoDB Implementation
+It is similar to the Coherence Implementation. What we need:
+1. Serialization of objects. MongoDB uses a special form of JSON called BSON, which is a binary JSON format.
+2. A unique identity generated by MongoDB and assigned to the Aggregate.
+3. A reference to the MongoDB node/cluster.
+4. A unique collection in which to store each Aggregate type. All instances of each Aggregate type must be stored as a set of serialized documents (key-value pairs) in their own collection.
+
+```java
+public class MongoProductRepository
+        extends MongoRepository<Product>
+        implements ProductRepository {
+
+    public MongoProductRepository() {
+        super();
+
+        this.serializer(new BSONSerializer<Product>(Product.class));
+    }
+    ...
+}
+```
+The BSONSerializer serializes objects using direct field access. So you dont need getters and setters on the object. If you want to migrate, you can simply override mapping for each field on deserialization:
+
+
+```java
+public class MongoProductRepository
+        extends MongoRepository<Product>
+        implements ProductRepository {
+
+    public MongoProductRepository() {
+        super();
+        this.serializer(new BSONSerializer<Product>(Product.class));
+
+        Map<String, String> overrides = new HashMap<String, String>();
+        overrides.put("description", "summary");
+        this.serializer().registerOverrideMappings(overrides);
+    }
+
+    public ProductId nextIdentity() {
+        return new ProductId(new ObjectId().toString());
+    }
+    ...
+}
+```
+You need to weigh the trade-offs of lazy migration approach.
+
+
