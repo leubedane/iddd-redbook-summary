@@ -199,7 +199,7 @@ Sequence:
 - AgilePM-BC allows for IdentityAccessBC to manage the roles ProductOwner and TeamMember
 - IdentityAccess-BC -> AgilePM-BC
 
-![Role Managment](img/RoleManagement.jpg)
+![Role Management](img/RoleManagement.jpg)
 
 ### Long-Running Processes, and Avoiding Responsibility
 
