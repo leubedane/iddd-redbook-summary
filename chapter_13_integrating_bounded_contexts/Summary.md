@@ -151,15 +151,15 @@ counter the goals of DDD.</u>
     * CollaboratorTranslator: convert json to Collaborator class
 
 ## Integration Using Messaging
-* allows any one system to acheive a higher degree of autonomy from systems it depends on.
+* allows any one system to achieve a higher degree of autonomy from systems it depends on.
 * as long as the middleware messaging system is running messages can still be produced and consumed even when not all 
 systems are running.
 * BoundedContext <--- Domain Events ----> BoundedContext
 
 ![Agile Project Software](img/ddd-agile-project-bounded-context.jpg)
 
-* When in the <b>[Identity and Access Context]</b> a User is assigned a role, the Role class produces an Event so that 
-the <b>[Agile Project Management]</b> can establish TeamMember or ProductOwner entity.
+* When in the <b>[Identity and Access Context-BC]</b> a User is assigned a role, the Role class produces an Event so that 
+the <b>[Agile Project Management-BC]</b> can establish TeamMember or ProductOwner entity.
 
 * One problem that could occur when using messaging is that Events can be delivered in the wrong order. In this case 
 you can use the occurredOn field to ensure Events are applied in the correct order.
@@ -194,6 +194,12 @@ information should be held and managed in one bounded-context.
 
 * Duplicating identity value objects XXXXId is okay as it's one of the primary ways of integrating bounded-contexts.
 
+Sequence: 
+- Example of how one BC would manage entities in another BC
+- AgilePM-BC allows for IdentityAccessBC to manage the roles ProductOwner and TeamMember
+- IdentityAccess-BC -> AgilePM-BC
+
+![Role Managment](img/RoleManagement.jpg)
 
 ### Long-Running Processes, and Avoiding Responsibility
 
@@ -204,9 +210,13 @@ Agile-PM[BC]  -----> Collaboration[BC]
 * Product is managed in Agile-PM[BC]
     * Since discussions can be about Product or BacklogItem
     * Agile-PM[BC] differentiates Discussion to ProductDiscussion and BacklogItemDiscussion 
-    * Both are Value Objects
+    * Both are Value Objects in Agile-PM[BC]
+    * But Discussion is an Aggregate in Collaboration[BC]
 * Forum and Discussion are managed in Collaboration[BC]
-* Problems: - Discussion creation request. - Discussion creation. - Discussion association with Product
+* Problems: 
+    - Discussion creation request. 
+    - Discussion creation. 
+    - Discussion association with Product
 * What happens if Collaboration[BC] isn't available?
 
 
