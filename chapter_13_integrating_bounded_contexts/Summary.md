@@ -65,9 +65,7 @@ type-safe methods for these fields: notificationId,typeName,version,occurredOn
 
 * special event details can be read like so:
 
-```java
-    //java code
-    
+```
     //the producer creates and packages the domain-event
     DomainEvent domainEvent = new DomainEvent(100, "testing");
     Notification notification = new Notifiction(1, domainEvent);
@@ -194,12 +192,58 @@ information should be held and managed in one bounded-context.
 
 * Duplicating identity value objects XXXXId is okay as it's one of the primary ways of integrating bounded-contexts.
 
+##### Entities in one BC can be managed by another BC
 Sequence: 
 - Example of how one BC would manage entities in another BC
 - AgilePM-BC allows for IdentityAccessBC to manage the roles ProductOwner and TeamMember
-- IdentityAccess-BC -> AgilePM-BC
+- IdentityAccess-BC ->  UserAssignedToRole -> AgilePM-BC
+- Here it can be seen that the two BCs integrate via UserAssignedToRole event
+- It can also be seen that IdentityAccess-BC is managing the roles in AgilePM-BC
 
+ 
 ![Role Management](img/RoleManagement.jpg)
+Note: to open the raw .drawio file use https://www.draw.io
+
+- The UserAssignedToRole is delivered using a <b>messaging infrastructure</b>
+- This presents some challenges
+- Messages may arrive in wrong order
+- In this case occurredOn to process these events in time aware way
+- This way when we process one event we don't process any future events with prior occurredOn value
+
+![Using Change Tracker](img/UsingChangeTracker.jpg)
+Note: to open the raw .drawio file use https://www.draw.io
+
+```
+    //TeamService
+    teamMemeber.disable(aCommand.getOccurredOn())
+    
+    //TeamMember
+    public void diable(Date asOfDate) {
+        if(this.changeTracker().canToggleEnabling(asOfDate)) {
+            this.setEnabled(false);
+            this.setChangeTracker(this.changeTracker().enabledOn(asOfDate))
+        }
+    }
+    
+    //MemberChangeTracker
+    public boolean canToggleEnabled(asOfDate) {
+        return this.enabledOn().before(asOfDate);
+    }
+    
+    //MemberChangeTracker
+    public MemberChangeTracker enabledOn(Date asOfDate) {
+        return new MemberChangeTracker(
+            asOfDate,
+            this.nameChangedOn(),
+            this.emailAddressChangedOn());
+    }
+```
+
+- Note only actual changes should be allowed, otherwise real out of order changes may be ignored
+    - so change email address with same email address should not cause occurredOn to change
+- Here the ChangeTracker makes the command idempotent
+
+
 
 ### Long-Running Processes, and Avoiding Responsibility
 
