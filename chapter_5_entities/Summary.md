@@ -118,476 +118,196 @@ If we call on the database for a sequence or incrementing value, it will always 
 One possible downside is performance. It can take significantly longer to go to the database to get each value 
 than to generate identities in the application. You can use caches to improve this.
 
+Examples for Oracle Sequences and MYSql auto increment columns were provided.
+
+**Order May Matter**
+
+*Early identity* generation and assignment happen before the Entity is
+persisted.
+
+*Late identity* generation and assignment happen when the Entity is
+persisted.
+
+### Another Bounded Context Assigns Identity
+When another Bounded Context assigns identity, we need to integrate to
+find, match, and assign each identity. Integrations are explained in Context Maps and Integrating Bounded Countexts.
+
+Making an exact match is the most desirable. Users need to provide one or
+more attributes, such as an account number, username, e-mail address, or
+other unique symbol, to pinpoint the intended result.
+
+There are some synchronization issues:
+* What happens if externally referenced objects transition in ways that affect local Entities?
+* How will we know that the associated object changed?
+
+This problem can be solved using an Event-Driven Architecture (4) with Domain Events (8).
+This is the most complex of identity creation strategies. The maintenance
+of the local Entity is dependent not only on transitions caused by local domain
+behaviors but possibly also on those that occur in one or more external
+systems. Use this approach as conservatively as possible.
 
 
+### When the Timing of Identity Generation Matters
+Simple case:
+Tolerate late allocation of identity.
 
-Explanation: 
+![id1](img/Identity1.png)
 
-How it works in common languages(like c#, java, etc.)
-Objects are added to a collection, and they remain in the collection until they are removed. There is no need to do anything special to get the collection to recognize changes to the objects that it contains.
+Consider a scenario where the client subscribes
+to outgoing Domain Events. An Event occurs when a new Product
+instantiation completes. The client saves the published Event to an Event
+Store (8). Eventually those stored Events are published as notifications that
+reach subscribers outside the Bounded Context. Using the approach of Figure
+5.3, the Domain Event is received before the client has the opportunity to add
+the new Product to the ProductRepository. Thus, the Domain Event would
+not contain the valid identity of the new Product. For the Domain Event to be
+correctly initialized, the identity generation must be completed early. Figure
+5.4 demonstrates that approach. The client queries for the next identity from
+the ProductRepository, passing it to the Product constructor.
 
-Standard collection interface:
+![id2](img/Identity2.png)
+
+
+### Surrogate Identity
+Some ORM tools, such as Hibernate, want to deal with object identity on their own terms. Hibernate prefers the database’s native type, such as a
+numeric sequence, as the primary identity of each Entity. If the domain requires another kind of identity, it causes an undesirable conflict for
+Hibernate.
+We need two identities. One of the identities is designed for the domain model and adheres to the requirements of the
+domain. The other is for Hibernate and is known as a surrogate identity.
+
+Now it is explained how to create a surrogate identity in hibernate ...
+
+### Identity Stability
+In most cases unique identity must be protected from modification, remaining stable throughout the lifetime of the Entity to which it is assigned.
+some things to do to prevent modification:
+* hide identity setters from clients
+* create guards in setters to prevent from changing if it exists
+
+example guard:
 ```java
-public interface Collection ... {
-    public boolean add(Object o);
-    public boolean addAll(Collection c);
-    public boolean remove(Object o);
-    public boolean removeAll(Collection c);
-}
-```
-
-Simple Usage: 
-
-```java
-public interface CollectionUsage {
-    assertTrue(calendarCollection.add(calendar));
-
-    assertEquals(1, calendarCollection.size());
-
-    assertTrue(calendarCollection.remove(calendar));
-
-    assertEquals(0, calendarCollection.size());
-}
-```
-Simple enough. One special kind of it is Set:
-```java
-public interface SetUsage {
-
-    public void testSet() {
-        Set<Calendar> calendarSet = new HashSet<Calendar>();
-        assertTrue(calendarSet.add(calendar));
-        assertEquals(1, calendarSet.size());
-        assertFalse(calendarSet.add(calendar));
-        assertEquals(1, calendarSet.size());
-    }
-}
-```
-If you try to add the same object twice it still has one object. The same goes for a Repository designed using a collection orientation. If you try to add an Aggregate a second time it has the same state.
-
-### takeaway
-* A Repository should work like a Set in the Collection-Oriented way
-* You don’t need to “re-save” modified objects already held by the Repository
-
-Example: 
-```java
-public interface RepositoryUsage {
-
-    public void modifyCalender() {
-       CalendarId calendarId = new CalendarId(...);
-        Calendar calendar =  new Calendar(calendarId, "Project Calendar"...);
-        CalendarRepository calendarRepository = new CalendarRepository();
-        calendarRepository.add(calendar);
-        // later ...
-        Calendar calendarToRename =
-        calendarRepository.findCalendar(calendarId);
-        calendarToRename.rename("CollabOvation Project Calendar");
-        // even later still ...
-        Calendar calendarThatWasRenamed =
-        calendarRepository.findCalendar(calendarId);
-
-        assertEquals("CollabOvation Project Calendar",calendarThatWasRenamed.name());
-    }
-}
-```
-The entry was modified without asking the CalendarRepository to save changes to the Calendar instance. CalendarRepository doesn’t have a save() method because there is no need for one.
-
-**Collection-oriented Repository truly mimics a collection in that no parts of the persistence mechanisms are surfaced to the client by its public interface.**
-
-To do this the persistence mechanism must support the ability to implicitly track changes made to each persistent object that it manages.
-Two strategies:
-
-### Implicit Copy-on-Read
-The persistence mechanism implicitly copies each persistent object on read when it is reconstituted from the data store and compares its private copy to the client’s copy on commit. When a change on this object happens, the persistence compares the object and flushes the changes to the data store.
-
-### Implicit Copy-on-Write
-The persistence mechanism manages all loaded persistent objects through a proxy. When an object is loaded, a thin proxy is created. The client performs actions on the proxy object which reflects behavior onto real object. When the proxy first receives a method invocation, it makes a copy of the managed object. The proxy tracks changes made to the state of the managed object and marks it dirty. On the commit of the transcation the changes where flushed.
-
-### overall advantage
-Persistent object changes are tracked implicitly, requiring no explicit client knowledge or intervention to make changes known to the persistence mechanism.
-The bottom line here is that using a persistence mechanism like this, such as Hibernate, allows you to employ a traditional, collection-oriented Repository.
-
-### When not to use
-If your requirements demand a very high-performance domain with many, many objects in memory at any given time, this sort of mechanism is going to add gratuitous overhead, in both memory and execution. 
-
-
-## Hibernate Implementation
-You need an interface which represents the collection-oriented design. The implementation can use hibernate. The return value of the add() and remove() method has a void return value. If you return a boolean it is not said, that the operation suceeded. You should carefully use removeAll() method on the interface. If you need to remove items, you should also think about logical remove and not physical remove. 
-
-Another important part is the definition of finder methods like: 
-
-```java
-public interface CalendarEntryRepository  {
-
-    public CalendarEntry calendarEntryOfId(
-            Tenant aTenant,
-            CalendarEntryId aCalendarEntryId);
-
-    public Collection<CalendarEntry> calendarEntriesOfCalendar(
-            Tenant aTenant,
-            CalendarId aCalendarId);
-
-    public Collection<CalendarEntry> overlappingCalendarEntries(
-            Tenant aTenant,
-            CalendarId aCalendarId,
-            TimeSpan aTimeSpan);
-}
-```
-
-You could also provide a function to get the next identy:
-```java
-public interface CalendarEntryRepository  {
-    public CalendarEntryId nextIdentity();
-}
-```
-Any code which wants to create a new instance can call the nextIdenty method and assign its new unique id.
-
-Start with the implementation in hibernate. You should put the implementation in another package or module. You can also put all technical implementation classes in the infrastructure layer.
-```java
-public class HibernateCalendarEntryRepository
-        implements CalendarEntryRepository  {
-    ...
-    @Override
-    public void add(CalendarEntry aCalendarEntry) {
-        try {
-            this.session().saveOrUpdate(aCalendarEntry);
-        } catch (ConstraintViolationException e) {
-            throw new IllegalStateException(
-                    "CalendarEntry is not unique.", e);
+public class User extends Entity {
+    protected void setUsername(String aUsername) {
+        if (this.username != null) {
+            throw new IllegalStateException(“The username may not be changed.”);
         }
-    }
-
-    @Override
-    public void addAll(
-            Collection<CalendarEntry> aCalendarEntryCollection) {
-        try {
-            for (CalendarEntry instance : aCalendarEntryCollection) {
-                this.session().saveOrUpdate(instance);
-            }
-        } catch (ConstraintViolationException e) {
-            throw new IllegalStateException(
-                "CalendarEntry is not unique.", e);
+        if (aUsername == null) {
+            throw new IllegalArgumentException(“The username may not be set to null.”);
         }
-    }
-
-    @Override
-    public void remove(CalendarEntry aCalendarEntry) {
-        this.session().delete(aCalendarEntry);
-    }
-
-    @Override
-    public void removeAll(
-            Collection<CalendarEntry> aCalendarEntryCollection) {
-        for (CalendarEntry instance : aCalendarEntryCollection) {
-            this.session().delete(instance);
-        }
-    }
-    ...
-}
-```
-The internal usage of saveOrUpdate() method illustrates the set like handling of the collection. To hide information about exceptions from the client the `ConstraintViolationException` is catched and converted to a more client-friendly IllegalStateException. You can also use domain specific exceptions. 
-
-A special thing is the one-to-one bidirectional relation in Identity and Access Context. 
-```java
-public class HibernateUserRepository implements UserRepository  {
-    ...
-    @Override
-    public void remove(User aUser) {
-        this.session().delete(aUser.person());
-        this.session().delete(aUser);
-    }
-
-    @Override
-    public void removeAll(Collection<User> aUserCollection) {
-        for (User instance : aUserCollection) {
-            this.session().delete(instance.person());
-            this.session().delete(instance);
-        }
-    }
-    ...
-}
-```
-Before you can delete the User, you must first delete the person. If you don´t delete the person object, it will be orphaned in its db table. This is a good reason to avoid bidirectional one-to-one mappings. You should use a constrained  unidirectional one-to-many mapping. Vernon is a strong opponent of Aggregate-managed persistence. His advice is to use Repository-only persistence, it should be a rule of thumb to avoid Aggregate-managed persistence.
-
-Finder implementation:
-```java
-public class HibernateCalendarEntryRepository
-        implements CalendarEntryRepository {
-    ...
-    @Override
-    public Collection<CalendarEntry> overlappingCalendarEntries(
-        Tenant aTenant, CalendarId aCalendarId, TimeSpan aTimeSpan) {
-        Query query =
-            this.session().createQuery(
-                "from CalendarEntry as _obj_ " +
-                "where _obj_.tenant = :tenant and " +
-                  "_obj_.calendarId = :calendarId and " +
-                  "((_obj_.repetition.timeSpan.begins between " +
-                      ":tsb and :tse) or " +
-                  " (_obj_.repetition.timeSpan.ends between " +
-                      ":tsb and :tse))");
-
-        query.setParameter("tenant", aTenant);
-        query.setParameter("calendarId", aCalendarId);
-        query.setParameter("tsb", aTimeSpan.begins(), Hibernate.DATE);
-        query.setParameter("tse", aTimeSpan.ends(), Hibernate.DATE);
-
-        return (Collection<CalendarEntry>) query.list();
+        this.username = aUsername;
     }
 }
 ```
 
-## Toplink Implementation
-TopLink has a Session and a Unit of Work. Example Usage:
-```java
-public class UnitOfWorkUsage {
+Whiteboard Time:
 
-    public void usageExample(
-        Calendar calendar = session.readObject(...);
-        UnitOfWork unitOfWork = session.acquireUnitOfWork();
-        Calendar calendarToRename = unitOfWork.registerObject(calendar);
-        calendarToRename.rename("CollabOvation Project Calendar");
-        unitOfWork.commit();
-    }
+* Consider some true Entities from your current domain and write
+  their names. (What are their unique identities, both domain and surrogate? Would any
+                of the identities have been better served by a different kind of identity
+                generation, or the timing of the identity assignment?)
+* Indicate next to each Entity whether you should have used a
+  different identity assignment approach—user, application,
+  persistence, or other Bounded Context—and why (even if you can’t
+  change it now).
+* Note next to each Entity whether it needs early identity generation
+  or can suffice with late identity generation, and explain why. Consider the stability of each identity, 
+  which is one area you can improve on if necessary
+  
 
-    public void add(Calendar aCalendar) {
-        this.unitOfWork().registerNewObject(aCalendar);
-    }
+## Discovering Entities and Their Intrinsic Characteristics
+      
+Example CollabOvation team (Scrum context). Team caught in the trap of doing a lot of entityrelationship (ER) modeling in Java code.
+This leads to a largely [Anemic Domain Model](https://martinfowler.com/bliki/AnemicDomainModel.html)                                      
+The Ubiquitous Language in a cleanly separated Bounded Context gives us
+the concepts and terms we need to design our domain model.
+Take time to discover your model. Yet, it would be a further mistake to think of the Language as
+the glossary and scenarios only. In the end the Language is modeled by your code, and it may be difficult or 
+impossible to keep documentation in sync.
 
-    // to register change listener on object so you can
-    // persist it after modify it.
-    public Calendar editingCopy(Calendar aCalendar) {
-        return (Calendar) this.unitOfWork().registerObject(aCalendar);
-    }
+### Uncovering Entities and Properties
 
-    // or
+Identity and Access Context
 
-    public void useEditingMode();
-}
-```
-The UnitOfWork provides a much more efficient use of memory and processing power. 
-You must explicitly inform the UnitOfWork that you intend to modify the object. There is no clone or editing copy created. With the register method the change tracker is activated so you can commit the changes. 
+![contextmap](img/contextMap.png)
 
+We need to model a User. Knowledge about the a User:
+* Users exist in association with and under the control of a tenancy.
+* Users of a system must be authenticated.
+* Users possess personal information, including a name and contact information.
+* User personal information may be changed by the users themselves or by a manager.
+* User security credentials (passwords) may be changed.
 
-## Persistence-Oriented (save-based) Repositories
-When a collection-oriented repo does´t work:
-* persistence mechanism doesn´t implicitly or explicitly detect and track object changes
+As soon as they saw/heard different forms of the word change used, they were pretty sure that they were dealing with at least one Entity.
 
-This happens, when using an in-memory DataFabric or another NoSQL key-value data store. Every time you modify an object, you need the ```save()``` method. If you plan to use a NoSQL DB instead of a relational db you should also consider using this style. 
+The key term was authenticated, which was a strong
+indication to the team that some kind of search resolution needed to be
+provided. If you have a bunch of things, and one of the things needs to be found out of many, you need unique identity to distinguish the one
+from all others.
 
-### Take-away
-We must explicitly ```put()``` both new and changed objects into the store. It simplifies the writes and reads of aggregates, thats why they were called Aggregate Stores or Aggregate-Oriented Databases. The data is saved in a key-value map.
+Ideas about the first sentence:
+tenants own users: *but they don’t collect and contain them.*
+* Tenants allow for the registration of many users by invitation.
+* Tenants may be active or be deactivated.
+* Users of a system must be authenticated but can be authenticated only if the tenant is active.
+
+Whatever owns users, some users may be unavailable under specific circumstances. It is the beginning of a glossar.
+
+The team decided that they would use a full UUID to identify each
+Tenant uniquely, a case where the application generates the identity. By defining a TenantId Value Object, the team could
+more confidently ensure that all subscriber-owned Entities were striped with the correct identity.
+![entities](img/entities.png)
+
+Continue to find more attributes for the entity. Other attributes may be associated with each subscriber, such as a
+support contract and call activation PIN, billing and payment information, and maybe a business location along with customer
+contacts. But those are business concerns, not part of security.
+                                                 
+Glossary:
+
+* Tenant: A named organizational subscriber of identity and access services, as well as other online services. Facilitates user
+registration through invitation.
+* User: A registered security principal within a tenancy, complete with personal name and contact information. The User has a unique
+username and an encrypted password.
+* Encryption Service: Provides a means to encrypt passwords and other data that cannot be stored and used as clear text.
+
+*Tenants may be active or be deactivated.*
+
+**Wrong:**
 
 ```java
-public class SimpleWriteRead {
-
-    public void usageExample() {
-       cache.put(product.productId(), product);
-
-        // later ...
-        product = cache.get(productId);
+public class Tenant extends Entity {
+    private boolean active;
+    public void setActive(boolean active) {
+        this.active = active;
     }
 }
 ```
-In this example the product is serialized with java standard serialization. You need to think about performance when serialize objects. It is not as simple as using a put in a Java Map.
 
-## Coherence Implementation
-Implementation example for a Coherence DB.
-Interface:
-```java
-public interface ProductRepository  {
-    public ProductId nextIdentity();
-    public Collection<Product> allProductsOfTenant(Tenant aTenant);
-    public Product productOfId(Tenant aTenant, ProductId aProductId);
-    public void remove(Product aProduct);
-    public void removeAll(Collection<Product> aProductCollection);
-    public void save(Product aProduct);
-    public void saveAll(Collection<Product> aProductCollection);
-}
-```
-The main difference is using ```save()``` and ```saveAll()``` instead of ```add()``` and ```addAll()```. In this style Aggregates need to be added when created and updated:
+**Wright:**
 
 ```java
-public class CreateAndUpdate {
-
-    public void usageExample() {
-        Product product = new Product(...);
-
-        productRepository.save(product);
-
-        // later ...
-
-        Product product =
-        productRepository.productOfId(tenantId, productId);
-
-        product.reprioritizeFrom(backlogItemId, orderOfPriority);
-
-        productRepository.save(product);
+public class Tenant extends Entity {
+    public void activate() {
+    }
+    public void deactivate() {
     }
 }
 ```
 
-Repository implementation:
+The glossary grows:
+* Activate tenant: Facilitate the activation of a tenant using this operation, and the current state may be confirmed.
+* Deactivate tenant: Facilitate the deactivation of a tenant using this operation. Users may not be authenticated when the tenant is
+deactivated.
+* Authentication Service: Coordinates the authentication of users, first ensuring that their owning tenant is active.
+
+User along with Fundamental Identity, two commonly combined
+security patterns, were applied.1 From the use of the term personal, it is
+clear that a personal concept accompanies the User. Person is modeled as a separate class to avoid placing too much
+responsibility on the User. The word personal led the team to add Person to the Ubiquitous Language:
+
+* Person: Contains and manages personal data about a User,
+  including name and contact information.
+  
+  ![entities](img/personentity.png)
 
 
-```java
-public class CoherenceProductRepository implements ProductRepository {
-    private Map<Tenant,NamedCache> caches;
-
-    public CoherenceProductRepository() {
-        super();
-        this.caches = new HashMap<Tenant,NamedCache>();
-    }
-    ...
-    private synchronized NamedCache cache(TenantId aTenantId) {
-        NamedCache cache = this.caches.get(aTenantId);
-
-        if (cache == null) {
-            cache = CacheFactory.getCache(
-                    "agilepm.Product." + aTenantId.id(),
-                    Product.class.getClassLoader());
-
-            this.caches.put(aTenantId, cache);
-        }
-
-        return cache;
-    }
-    ...
-}
-```
-In the case of the Agile Project Management Context, the team has chosen to place Repository technical implementations in the Infrastructure Layer. There are various Coherence named cache strategies that could be designed. In this case the team has chosen to cache using the following namespace:
-1. First level by the Bounded Context short name: agilepm
-2. Second level by the Aggregate simple name: Product
-3. Third level by the unique identity of each tenant: TenantId
-
-Benefits:
-* model of each Bounded Context, Aggregate, and tenant that is managed by Coherence can be tuned and scaled separately. 
-* each tenant is completely segregated from all others.
-
-Further implementations:
-
-```java
-public class CoherenceProductRepository implements ProductRepository {
-    @Override
-    public void save(Product aProduct) {
-        this.cache(aProduct.tenantId())
-                .put(this.idOf(aProduct), aProduct);
-    }
-
-    @Override
-    public void saveAll(Collection<Product> aProductCollection) {
-        if (!aProductCollection.isEmpty()) {
-            TenantId tenantId = null;
-
-            Map<String,Product> productsMap =
-                new HashMap<String,Product>(aProductCollection.size());
-
-            for (Product product : aProductCollection) {
-                if (tenantId == null) {
-                    tenantId = product.tenantId();
-                }
-                productsMap.put(this.idOf(product), product);
-            }
-
-            this.cache(tenantId).putAll(productsMap);
-        }
-    }
-    ...
-    private String idOf(Product aProduct) {
-        return this.idOf(aProduct.productId());
-    }
-
-    private String idOf(ProductId aProductId) {
-        return aProductId.id();
-    }
-
-    @Override
-    public void remove(Product aProduct) {
-        this.cache(aProduct.tenant()).remove(this.idOf(aProduct));
-    }
-
-    @Override
-    public void removeAll(Collection<Product> aProductCollection) {
-        for (Product product : aProductCollection) {
-            this.remove(product);
-        }
-    }
-}
-```
-Note the two editions of ```idOf()```. Both methods return a String which is used as unique identity for the cache. To reduce network traffic the ```saveAll()``` does not call the ```save()``` method. It uses batch-processing. The ```removeAll()``` method uses ```remove()``` method because there is no method on HashMap which removes all elements, so you need to iterate.
-
-### Finder Methods
-```java
-public class CoherenceProductRepository
-        implements ProductRepository {
-    ...
-
-    @SuppressWarnings("unchecked")
-    @Override
-    public Collection<Product> allProductsOfTenant(Tenant aTenant) {
-        Set<Map.Entry<String, Product>> entries = this.cache(aTenant).entrySet();
-
-        Collection<Product> products =
-            new HashSet<Product>(entries.size());
-
-        for (Map.Entry<String, Product> entry : entries) {
-            products.add(entry.getValue());
-        }
-
-        return products;
-    }
-
-    @Override
-    public Product productOfId(Tenant aTenant, ProductId aProductId) {
-       return (Product) this.cache(aTenant).get(this.idOf(aProductId));
-    }
-    ...
-}
-```
-Through a good key design, the ```allProductsOfTenant()``` method is really simple. 
-
-## MongoDB Implementation
-It is similar to the Coherence Implementation. What we need:
-1. Serialization of objects. MongoDB uses a special form of JSON called BSON, which is a binary JSON format.
-2. A unique identity generated by MongoDB and assigned to the Aggregate.
-3. A reference to the MongoDB node/cluster.
-4. A unique collection in which to store each Aggregate type. All instances of each Aggregate type must be stored as a set of serialized documents (key-value pairs) in their own collection.
-
-```java
-public class MongoProductRepository
-        extends MongoRepository<Product>
-        implements ProductRepository {
-
-    public MongoProductRepository() {
-        super();
-
-        this.serializer(new BSONSerializer<Product>(Product.class));
-    }
-    ...
-}
-```
-The BSONSerializer serializes objects using direct field access. So you dont need getters and setters on the object. If you want to migrate, you can simply override mapping for each field on deserialization:
-
-
-```java
-public class MongoProductRepository
-        extends MongoRepository<Product>
-        implements ProductRepository {
-
-    public MongoProductRepository() {
-        super();
-        this.serializer(new BSONSerializer<Product>(Product.class));
-
-        Map<String, String> overrides = new HashMap<String, String>();
-        overrides.put("description", "summary");
-        this.serializer().registerOverrideMappings(overrides);
-    }
-
-    public ProductId nextIdentity() {
-        return new ProductId(new ObjectId().toString());
-    }
-    ...
-}
-```
-You need to weigh the trade-offs of lazy migration approach.
-
-
+### Roles and Responsibilities
+Discover the roles and responsibilities of objects. Here we look specifically at the roles and responsibilities of Entities.
